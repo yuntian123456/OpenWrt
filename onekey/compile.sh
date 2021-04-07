@@ -8,7 +8,7 @@ sleep 2s
 sudo apt-get update
 sudo apt-get upgrade
 
-sudo apt-get -y install build-essential asciidoc binutils bzip2 gawk gettext git libncurses5-dev libz-dev patch python3 python2.7 unzip zlib1g-dev lib32gcc1 libc6-dev-i386 subversion flex uglifyjs gcc-multilib g++-multilib p7zip p7zip-full msmtp libssl-dev texinfo libglib2.0-dev xmlto qemu-utils upx libelf-dev autoconf automake libtool autopoint device-tree-compiler ccache xsltproc rename antlr3 gperf curl screen
+sudo apt-get -y install build-essential asciidoc binutils bzip2 gawk gettext git libncurses5-dev libz-dev patch python3 python2.7 unzip zlib1g-dev lib32gcc1 libc6-dev-i386 subversion flex uglifyjs gcc-multilib g++-multilib p7zip p7zip-full msmtp libssl-dev texinfo libglib2.0-dev xmlto qemu-utils upx libelf-dev autoconf automake libtool autopoint device-tree-compiler ccache xsltproc rename antlr3 gperf curl screen upx
 
 
 
@@ -40,9 +40,10 @@ fi
 
 
 rm -Rf openwrt
-git clone -b master --depth 1 https://github.com/openwrt/openwrt
+git clone -b openwrt-21.02 --depth 1 https://github.com/openwrt/openwrt
 svn co https://github.com/garypang13/Actions-OpenWrt/trunk/devices openwrt/devices
 cd openwrt
+
 echo "
 
 1. X86_64
@@ -53,15 +54,13 @@ echo "
 
 4. r2s
 
-5. newifi-d2
+5. r4s
 
-6. hiwifi-hc5962
+6. newifi-d2
 
 7. XY-C5
 
-8. phicomm-N1
-
-9. Exit
+8. Exit
 
 "
 
@@ -87,27 +86,30 @@ case $CHOOSE in
 	break
 	;;
 	5)
-		firmware="newifi-d2"
+		firmware="nanopi-r4s"
 	break
 	;;
 	6)
-		firmware="hiwifi-hc5962"
+		firmware="newifi-d2"
 	break
 	;;
 	7)
 		firmware="XY-C5"
 	break
 	;;
-	8)
-		firmware="phicomm-N1"
-		make menuconfig
-	break
-	;;
-	9)	exit 0
+	8)	exit 0
 	;;
 
 esac
 done
+
+if [[ $firmware =~ (redmi-ac2100|phicomm-k2p|newifi-d2|k2p-32m-usb|XY-C5|xiaomi-r3p) ]]; then
+		wget -cO sdk1.tar.xz https://mirrors.cloud.tencent.com/openwrt/releases/21.02-SNAPSHOT/targets/ramips/mt7621/openwrt-sdk-21.02-SNAPSHOT-ramips-mt7621_gcc-8.4.0_musl.Linux-x86_64.tar.xz
+elif [[ $firmware =~ (nanopi-r2s|nanopi-r4s) ]]; then
+		wget -cO sdk1.tar.xz https://mirrors.cloud.tencent.com/openwrt/releases/21.02-SNAPSHOT/targets/rockchip/armv8/openwrt-sdk-21.02-SNAPSHOT-rockchip-armv8_gcc-8.4.0_musl.Linux-x86_64.tar.xz
+elif [[ $firmware == "x86_64" ]]; then
+		wget -cO sdk1.tar.xz https://mirrors.cloud.tencent.com/openwrt/releases/21.02-SNAPSHOT/targets/x86/64/openwrt-sdk-21.02-SNAPSHOT-x86-64_gcc-8.4.0_musl.Linux-x86_64.tar.xz
+fi
 
 
 read -p "请输入后台地址 [回车默认10.0.0.1]: " ip
@@ -127,11 +129,11 @@ if [ -f "devices/$firmware/diy.sh" ]; then
 fi
 if [ -f "devices/common/default-settings" ]; then
 	sed -i 's/10.0.0.1/$ip/' devices/common/default-settings
-	cp -f devices/common/default-settings package/*/*/default-settings/root/etc/uci-defaults/99-default-settings
+	cp -f devices/common/default-settings package/*/*/default-settings/files/uci.defaults
 fi
 if [ -f "devices/$firmware/default-settings" ]; then
 	sed -i 's/10.0.0.1/$ip/' devices/$firmware/default-settings
-	cat -f devices/$firmware/default-settings >> package/*/*/default-settings/root/etc/uci-defaults/99-default-settings
+	cat -f devices/$firmware/default-settings >> package/*/*/default-settings/files/uci.defaults
 fi
 if [ -n "$(ls -A "devices/common/patches" 2>/dev/null)" ]; then
           find "devices/common/patches" -type f -name '*.patch' -print0 | sort -z | xargs -I % -t -0 -n 1 sh -c "cat '%'  | patch -d './' -p1 --forward"
@@ -154,7 +156,22 @@ echo "                      *****5秒后开始编译*****
 echo
 echo
 echo
-sleep 5s
+sleep 3s
+
+if [ -f sdk1.tar.xz ]; then
+	mkdir sdk
+	tar -xJf sdk1.tar.xz -C sdk
+	cp -rf sdk/*/staging_dir/* ./staging_dir/
+	rm -rf sdk sdk1.tar.xz
+	if [ -f /usr/bin/python ]; then
+		ln -sf /usr/bin/python staging_dir/host/bin/python
+	else
+		ln -sf /usr/bin/python3 staging_dir/host/bin/python
+	fi
+	ln -sf /usr/bin/python3 staging_dir/host/bin/python3
+	sed -i '/\(tools\|toolchain\)\/Makefile/d' Makefile
+	sed -i 's,$(STAGING_DIR_HOST)/bin/upx,upx,' package/feeds/custom/*/Makefile
+fi
 
 make -j$(($(nproc)+1)) download v=s ; make -j$(($(nproc)+1)) || make -j1 V=s
 
